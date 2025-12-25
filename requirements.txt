@@ -3,3 +3,4 @@ groq
 flask
 gunicorn
 requests
+flask-cors
