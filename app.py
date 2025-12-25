@@ -9,12 +9,12 @@ import requests
 app = Flask(__name__)
 CORS(app)
 
-# 👇 API Key
+# 👇 Aapki API Key
 client = Groq(api_key="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")
 
 @app.route("/")
 def home():
-    return "<h1>Vision Server (Stable) Online 🟢</h1>"
+    return "<h1>Vision Server (Scout Model) Online 🟢</h1>"
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
@@ -23,17 +23,20 @@ def analyze():
         img_url = data.get("image_url")
         if not img_url: return jsonify({"description": "No Image Found"}), 400
 
-        # 👇 REVERTED TO STABLE MODEL
+        print(f"Analyzing image with Scout model: {img_url}")
+
+        # 👇 WAPAS WAHI PURANA "SCOUT" MODEL
         completion = client.chat.completions.create(
-            model="llama-3.2-11b-vision-preview", # 👈 ISSE 404 NAHI AAYEGA
+            model="meta-llama/llama-4-scout-17b-16e-instruct", 
             messages=[{
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Describe this image in detail in flirty Hinglish."},
+                    {"type": "text", "text": "Describe this image in detail in Hinglish."},
                     {"type": "image_url", "image_url": {"url": img_url}}
                 ]
             }],
-            temperature=0.5
+            temperature=0.3, # Thoda kam temperature taaki fast ho
+            max_tokens=500
         )
         return jsonify({"description": completion.choices[0].message.content})
 
