@@ -1,74 +1,87 @@
 import os
-import requests
-import sys
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+import base64
+import telebot
 from groq import Groq
+from flask import Flask
 from threading import Thread
-import time
 
-app = Flask(__name__)
-CORS(app)
+# --- 1. CONFIGURATION ---
+# Render ke "Environment Variables" se keys aayengi
+TELEGRAM_TOKEN = os.environ.get("8431298254:AAEoEW2sflJrvPwR2bnzkI6h0f2p7vJFogg")
+GROQ_API_KEY = os.environ.get("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")
 
-# 👇 API Key Debug Check
-GROQ_API_KEY = "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"
+# Groq Client
 client = Groq(api_key=GROQ_API_KEY)
 
-@app.route("/")
+# Telegram Bot
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
+
+# Flask Server (Render ko 24/7 chalane ke liye)
+app = Flask(__name__)
+
+@app.route('/')
 def home():
-    return "<h1>Alya Vision Server is Online! 👁️</h1>"
+    return "Bot is Running! Llama-4 Scout Active 🚀"
 
-@app.route("/analyze", methods=["POST"])
-def analyze_media():
-    # Force logs to appear immediately (flush=True)
-    print("🔔 Request Received on /analyze", flush=True) 
-    
+def run_http_server():
+    app.run(host='0.0.0.0', port=10000)
+
+# --- 2. IMAGE ENCODER (Groq ko Base64 chahiye) ---
+def encode_image(image_data):
+    return base64.b64encode(image_data).decode('utf-8')
+
+# --- 3. BOT LOGIC ---
+
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "Namaste! 📸 Photo bhejo, main 'Llama 4 Scout' se dekh kar bataunga.")
+
+@bot.message_handler(content_types=['photo'])
+def handle_photo(message):
     try:
-        data = request.json
-        # Agar data None hai (Main server ne JSON nahi bheja)
-        if not data:
-            print("❌ No JSON data received", flush=True)
-            return jsonify({"description": "Error: No data received from Main Server."})
+        # User ko batao hum kaam kar rahe hain
+        sent_msg = bot.reply_to(message, "Image analyze ho rahi hai... ⚡")
 
-        img_url = data.get("image_url")
-        print(f"📸 Image URL: {img_url}", flush=True)
+        # A. Telegram se photo uthao
+        file_info = bot.get_file(message.photo[-1].file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
 
-        if not img_url:
-            return jsonify({"description": "Error: Image URL missing."})
+        # B. Photo ko Base64 mein badlo
+        base64_image = encode_image(downloaded_file)
 
-        # --- VISION PROCESSING ---
-        print("🤖 Sending to Groq...", flush=True)
-        completion = client.chat.completions.create(
-            model="llama-3.2-11b-vision-instant",
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "Describe this image briefly."},
-                    {"type": "image_url", "image_url": {"url": img_url}}
-                ]
-            }]
+        # C. Groq API Call (Aapka wala Model)
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Is image ko Hinglish mein detail mein describe karo. Batao kya kya dikh raha hai."},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}",
+                            },
+                        },
+                    ],
+                }
+            ],
+            # YAHAN HAI WO MODEL JO AAPNE SCREENSHOT MEIN DIKHAYA 👇
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            temperature=0.5,
+            max_tokens=1024,
         )
-        
-        description = completion.choices[0].message.content
-        print("✅ Success!", flush=True)
-        return jsonify({"description": description})
+
+        # D. Jawab User ko bhejo
+        reply_text = chat_completion.choices[0].message.content
+        bot.edit_message_text(reply_text, chat_id=message.chat.id, message_id=sent_msg.message_id)
 
     except Exception as e:
-        # 👇 CRITICAL FIX: Agar error aaye to CRASH mat ho, Error wapas bhejo
-        error_msg = f"INTERNAL SERVER ERROR: {str(e)}"
-        print(f"🔥 {error_msg}", flush=True)
-        # Hum 200 OK bhejenge taaki Main Server is error ko User ko dikha sake
-        return jsonify({"description": error_msg})
+        error_msg = f"❌ Error: {str(e)}"
+        print(error_msg)
+        bot.reply_to(message, "Bhai, Groq ka server busy hai ya key expire ho gayi hai.")
 
-# Keep Alive
-def keep_alive():
-    while True:
-        try:
-            time.sleep(600)
-            requests.get("http://127.0.0.1:10000/")
-        except: pass
-
+# --- 4. MAIN EXECUTION ---
 if __name__ == "__main__":
-    Thread(target=keep_alive).start()
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    t = Thread(target=run_http_server)
+    t.start()
+    bot.infinity_polling()
