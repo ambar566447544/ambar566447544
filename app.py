@@ -1,56 +1,38 @@
 import os
-import base64
-import telebot
+import requests
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 from groq import Groq
-from flask import Flask
 from threading import Thread
+import time
 
-# --- 1. CONFIGURATION (Direct Keys) ---
-# Maine aapki keys yahan seedhi likh di hain
-TELEGRAM_TOKEN = "8431298254:AAEoEW2sflJrvPwR2bnzkI6h0f2p7vJFogg"
+app = Flask(__name__)
+CORS(app)
+
+# ================= CONFIGURATION =================
+# 👇 AAPKI NAYI WALI KEY (Jo Telegram me chal rahi hai)
 GROQ_API_KEY = "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"
-
-# Groq Client Setup
 client = Groq(api_key=GROQ_API_KEY)
 
-# Telegram Bot Setup
-bot = telebot.TeleBot(TELEGRAM_TOKEN)
-
-# Flask Server (Render ko 24/7 zinda rakhne ke liye)
-app = Flask(__name__)
-
-@app.route('/')
+@app.route("/")
 def home():
-    return "Bot is Running! Llama-4 Scout Active 🚀"
+    return "<h1>Llama 4 Scout Extension is Running! 🚀</h1>"
 
-def run_http_server():
-    # Render port 10000 use karta hai
-    app.run(host='0.0.0.0', port=10000)
-
-# --- 2. IMAGE ENCODER ---
-def encode_image(image_data):
-    return base64.b64encode(image_data).decode('utf-8')
-
-# --- 3. BOT LOGIC ---
-
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "Namaste! 📸 Photo bhejo, main 'Llama 4 Scout' model se dekh kar bataunga kya hai.")
-
-@bot.message_handler(content_types=['photo'])
-def handle_photo(message):
+@app.route("/analyze", methods=["POST"])
+def analyze_media():
+    print("🔔 Request Received on /analyze", flush=True)
     try:
-        # User ko batao hum kaam kar rahe hain
-        sent_msg = bot.reply_to(message, "Ruko, Llama-4 se dekh raha hu... ⚡")
+        data = request.json
+        img_url = data.get("image_url")
+        
+        print(f"📸 Image URL: {img_url}", flush=True)
 
-        # A. Telegram se photo download karo
-        file_info = bot.get_file(message.photo[-1].file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
+        if not img_url:
+            return jsonify({"description": "Error: No image URL provided."})
 
-        # B. Photo ko Base64 mein badlo (Groq ke liye)
-        base64_image = encode_image(downloaded_file)
-
-        # C. Groq API Call (Llama 4 Scout Model)
+        # --- VISION PROCESSING (Llama 4 Scout) ---
+        print("🤖 Asking Llama 4 Scout...", flush=True)
+        
         chat_completion = client.chat.completions.create(
             messages=[
                 {
@@ -60,33 +42,37 @@ def handle_photo(message):
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}",
+                                "url": img_url, # Hum URL bhejenge, Groq isse handle kar lega
                             },
                         },
                     ],
                 }
             ],
-            # Aapka pasandida model
+            # 👇 NAYA MODEL (Jo Telegram me mast chal raha hai)
             model="meta-llama/llama-4-scout-17b-16e-instruct",
             temperature=0.5,
             max_tokens=1024,
         )
-
-        # D. Jawab User ko bhejo
-        reply_text = chat_completion.choices[0].message.content
-        bot.edit_message_text(reply_text, chat_id=message.chat.id, message_id=sent_msg.message_id)
+        
+        description = chat_completion.choices[0].message.content
+        print("✅ Analysis Complete!", flush=True)
+        return jsonify({"description": description})
 
     except Exception as e:
-        error_msg = f"❌ Error: {str(e)}"
-        print(error_msg)
-        bot.reply_to(message, "Sorry bhai, Groq server busy hai ya model load nahi hua.")
+        error_msg = f"INTERNAL SERVER ERROR: {str(e)}"
+        print(f"🔥 {error_msg}", flush=True)
+        return jsonify({"description": error_msg}) # Error ko chat me bhejo
 
-# --- 4. MAIN EXECUTION ---
+# ================= AUTO-PING (JAGATE RAHO) =================
+def keep_alive():
+    while True:
+        try:
+            time.sleep(600)
+            requests.get("http://127.0.0.1:10000/")
+            print("💓 Auto-Ping sent.")
+        except: pass
+
 if __name__ == "__main__":
-    # Flask thread start
-    t = Thread(target=run_http_server)
-    t.start()
-    
-    # Bot start
-    print("Bot chalu ho gaya hai...")
-    bot.infinity_polling()
+    Thread(target=keep_alive).start()
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
