@@ -9,38 +9,37 @@ import requests
 app = Flask(__name__)
 CORS(app)
 
-# 👇 Aapki Groq API Key
+# 👇 API Key
 client = Groq(api_key="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")
 
 @app.route("/")
 def home():
-    return "<h1>Vision Server Online 🟢</h1>"
+    return "<h1>Vision Server (Stable) Online 🟢</h1>"
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
     try:
         data = request.json
         img_url = data.get("image_url")
-        if not img_url: 
-            return jsonify({"description": "No Image Found"}), 400
+        if not img_url: return jsonify({"description": "No Image Found"}), 400
 
-        # 👇 Stable Vision Model use kar rahe hain
+        # 👇 REVERTED TO STABLE MODEL
         completion = client.chat.completions.create(
-            model="llama-3.2-11b-vision-instant",
+            model="llama-3.2-11b-vision-preview", # 👈 ISSE 404 NAHI AAYEGA
             messages=[{
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Describe this image in detail using flirty Hinglish."},
+                    {"type": "text", "text": "Describe this image in detail in flirty Hinglish."},
                     {"type": "image_url", "image_url": {"url": img_url}}
                 ]
             }],
-            temperature=0.5,
-            max_tokens=500
+            temperature=0.5
         )
         return jsonify({"description": completion.choices[0].message.content})
 
     except Exception as e:
-        return jsonify({"description": f"Vision Error: {str(e)}"}), 200
+        print(f"Vision Error: {e}")
+        return jsonify({"description": f"Model Error: {str(e)}"}), 200
 
 def keep_alive():
     while True:
