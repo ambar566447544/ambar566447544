@@ -9,7 +9,7 @@ import requests
 app = Flask(__name__)
 CORS(app)
 
-# 👇 Aapki Nayi API Key
+# 👇 Aapki Groq API Key
 client = Groq(api_key="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")
 
 @app.route("/")
@@ -24,13 +24,13 @@ def analyze():
         if not img_url: 
             return jsonify({"description": "No Image Found"}), 400
 
-        # 👇 Stable Model use kar rahe hain
+        # 👇 Stable Vision Model use kar rahe hain
         completion = client.chat.completions.create(
             model="llama-3.2-11b-vision-instant",
             messages=[{
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Describe this image in Hinglish details."},
+                    {"type": "text", "text": "Describe this image in detail using flirty Hinglish."},
                     {"type": "image_url", "image_url": {"url": img_url}}
                 ]
             }],
@@ -47,8 +47,7 @@ def keep_alive():
         try:
             time.sleep(600)
             requests.get("http://127.0.0.1:10000/")
-        except: 
-            pass
+        except: pass
 
 if __name__ == "__main__":
     threading.Thread(target=keep_alive).start()
