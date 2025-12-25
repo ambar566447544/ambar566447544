@@ -1,5 +1,5 @@
-flask
-flask-cors
+pyTelegramBotAPI
 groq
-requests
+flask
 gunicorn
+requests
