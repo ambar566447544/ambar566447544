@@ -1,58 +1,71 @@
 import os
-import requests
 import time
+import requests
 from flask import Flask, request, jsonify
+from flask_cors import CORS
+from groq import Groq
+from threading import Thread
 
 app = Flask(__name__)
+CORS(app)
 
-# Hugging Face Model URL
-API_URL = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large"
-# Ye ek temporary key hai jo maine aapke liye set ki hai
-HEADERS = {"Authorization": "Bearer hf_VvYvXjXjXjXjXjXjXjXjXjXjXjXjXjXj"} # Dummy format, niche dekho
+# --- CONFIGURATION ---
+# Extension Server ki API Key
+GROQ_API_KEY = "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"
+client = Groq(api_key=GROQ_API_KEY)
 
-@app.route('/')
-def health(): return "Vision Server is Online! 🚀"
+@app.route("/")
+def home():
+    return "<h1>Alya Extension (Vision) is Awake & Running! 👁️</h1>"
 
-@app.route('/describe', methods=['POST'])
-def describe():
+@app.route("/analyze", methods=["POST"])
+def analyze_media():
     try:
         data = request.json
         img_url = data.get("image_url")
         
-        # 1. Download image from Telegram
-        img_res = requests.get(img_url, timeout=20)
-        if img_res.status_code != 200:
-            return jsonify({"error": "Telegram se photo nahi mil rahi"}), 500
+        # Future me agar PDF text bhejna ho to yahan receive kar sakte ho
+        # doc_text = data.get("doc_text") 
 
-        # 2. Call Hugging Face
-        # Note: Agar pehli baar mein error aaye toh 2 baar retry karega
-        for i in range(3):
-            response = requests.post(API_URL, data=img_res.content, timeout=40)
-            
-            # Agar response HTML hai (error), toh wait karke retry karo
-            if response.headers.get('Content-Type') != 'application/json':
-                time.sleep(5)
-                continue
-                
-            result = response.json()
-            
-            # Agar model load ho raha hai
-            if isinstance(result, dict) and "error" in result and "loading" in result["error"]:
-                time.sleep(10)
-                continue
-            break
+        print(f"Extension received image: {img_url}")
 
-        if isinstance(result, list) and len(result) > 0:
-            caption = result[0].get("generated_text", "a beautiful scene")
-            # Alya ka flirty touch
-            flirty_reply = f"Oye hoye! Mujhe dikh raha hai: {caption}... kaafi hot lag raha hai baby! 😉❤️"
-            return jsonify({"description": flirty_reply})
-        else:
-            return jsonify({"error": f"Model Response Error: {str(result)}"}), 500
+        if not img_url:
+            return jsonify({"description": "No image provided."})
+
+        # --- VISION PROCESSING (Sirf yahan hogi) ---
+        completion = client.chat.completions.create(
+            model="llama-3.2-11b-vision-instant",
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Describe this image in detail mainly focusing on visual elements, text, and context so the main AI can chat about it."},
+                    {"type": "image_url", "image_url": {"url": img_url}}
+                ]
+            }]
+        )
+        
+        description = completion.choices[0].message.content
+        return jsonify({"description": description})
 
     except Exception as e:
+        print(f"Extension Error: {e}")
         return jsonify({"error": str(e)}), 500
 
+# ================= AUTO-WAKEUP SYSTEM =================
+def keep_alive():
+    while True:
+        try:
+            time.sleep(600) # Har 10 minute mein
+            # Khud ko ping karke jagaye rakhega
+            requests.get("http://127.0.0.1:10000/")
+            print("Auto-Ping sent to keep Extension awake.")
+        except Exception as e:
+            print(f"Auto-Ping failed: {e}")
+
 if __name__ == "__main__":
+    # Background thread start
+    t = Thread(target=keep_alive)
+    t.start()
+    
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
