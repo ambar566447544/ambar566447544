@@ -12,15 +12,13 @@ import yt_dlp
 app = Flask(__name__)
 CORS(app)
 
-# --- CONFIGURATIONS ---
 GROQ_API_KEY = "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"
 client = Groq(api_key=GROQ_API_KEY)
 
 @app.route("/")
-def home(): return "<h1>Alya Extension Hub (Vision + Media + Docs) 🛠️</h1>"
+def home(): return "<h1>Alya Extension Hub v2.0 (Smart Docs) 🛠️</h1>"
 
-# ================= 1. IMAGE SYSTEM (UNCHANGED) =================
-# Bhai, isko maine bilkul nahi cheda hai, ye waisa hi hai
+# --- 1. IMAGE ---
 @app.route("/analyze", methods=["POST"])
 def analyze():
     try:
@@ -39,60 +37,70 @@ def analyze():
         return jsonify({"description": completion.choices[0].message.content})
     except Exception as e: return jsonify({"description": f"Vision Error: {str(e)}"}), 200
 
-# ================= 2. NEW: UNIVERSAL MEDIA PROCESSOR =================
-# Ye route: PDF, Audio, Video, aur Links (Insta/YouTube) sab sambhalega
+# --- 2. DOCS & MEDIA ---
 @app.route("/process_media", methods=["POST"])
 def process_media():
     try:
         data = request.json
-        file_url = data.get("file_url") # Cloudinary URL or YouTube Link
-        media_type = data.get("media_type") # 'pdf', 'audio', 'video', 'link'
+        file_url = data.get("file_url") 
+        media_type = data.get("media_type")
 
         if not file_url: return jsonify({"result": "No URL provided"}), 400
 
-        # --- A. PDF / DOCUMENT ---
-        if media_type == 'pdf':
-            response = requests.get(file_url)
-            f = io.BytesIO(response.content)
-            reader = PyPDF2.PdfReader(f)
-            text = ""
-            for page in reader.pages:
-                text += page.extract_text() + "\n"
-            return jsonify({"result": f"Document Content:\n{text[:4000]}..."}) # Limit text
+        # A. DOCUMENTS (Text/PDF)
+        if media_type == 'pdf' or media_type == 'document':
+            try:
+                response = requests.get(file_url)
+                response.raise_for_status()
+                
+                # 1. Try as Text first
+                try:
+                    text_content = response.content.decode('utf-8')
+                    if not text_content.startswith('%PDF'):
+                        return jsonify({"result": f"File Content:\n{text_content[:4000]}..."})
+                except: pass
 
-        # --- B. AUDIO / VIDEO FILES (From Cloudinary) ---
+                # 2. Try as PDF
+                f = io.BytesIO(response.content)
+                reader = PyPDF2.PdfReader(f)
+                text = ""
+                for page in reader.pages:
+                    extracted = page.extract_text()
+                    if extracted: text += extracted + "\n"
+                
+                if not text.strip():
+                    return jsonify({"result": "⚠️ PDF Khali laga. Sayad ye Scanned Image hai."})
+                
+                return jsonify({"result": f"Document Content:\n{text[:4000]}..."})
+            except Exception as e:
+                return jsonify({"result": f"Doc Read Error: {str(e)}"})
+
+        # B. AUDIO/VIDEO
         elif media_type in ['audio', 'video']:
-            # Video/Audio ko download karke Groq Whisper se sunenge
-            # Note: Groq file mangta hai, URL nahi. Isliye download zaroori hai.
             response = requests.get(file_url)
-            filename = "temp_media.mp3" # Video ko bhi audio ki tarah treat karenge
-            with open(filename, "wb") as f:
-                f.write(response.content)
+            filename = "temp_media.mp3"
+            with open(filename, "wb") as f: f.write(response.content)
             
             with open(filename, "rb") as file_obj:
                 transcription = client.audio.transcriptions.create(
                     file=(filename, file_obj.read()),
                     model="whisper-large-v3",
-                    language="en" # Hinglish support
+                    language="en"
                 )
-            return jsonify({"result": f"Audio/Video Transcript: {transcription.text}"})
+            return jsonify({"result": f"Audio Transcript: {transcription.text}"})
 
-        # --- C. YOUTUBE / INSTAGRAM LINKS ---
+        # C. LINKS
         elif media_type == 'link':
-            # yt-dlp se title aur info nikalenge (Video download heavy padega)
-            ydl_opts = {'quiet': True, 'skip_download': True} # Sirf Info chahiye
+            ydl_opts = {'quiet': True, 'skip_download': True}
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(file_url, download=False)
-                title = info.get('title', 'Unknown')
-                desc = info.get('description', 'No description')
-                return jsonify({"result": f"Link Info:\nTitle: {title}\nDescription: {desc[:500]}"})
+                return jsonify({"result": f"Link Info:\nTitle: {info.get('title')}\nDesc: {info.get('description')[:500]}"})
 
         return jsonify({"result": "Unknown Media Type"})
 
     except Exception as e:
         return jsonify({"result": f"Processing Error: {str(e)}"}), 200
 
-# ================= AUTO-PING =================
 def keep_alive():
     while True:
         try: time.sleep(600); requests.get("http://127.0.0.1:10000/")
