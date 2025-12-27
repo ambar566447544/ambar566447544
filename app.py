@@ -15,8 +15,13 @@ CORS(app)
 GROQ_API_KEY = "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"
 client = Groq(api_key=GROQ_API_KEY)
 
+# 👇 BROWSER MASK (Taaki Cloudinary block na kare)
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+}
+
 @app.route("/")
-def home(): return "<h1>Alya Extension Hub v2.0 (Smart Docs) 🛠️</h1>"
+def home(): return "<h1>Alya Extension Hub v3.0 (Browser Masked) 🎭</h1>"
 
 # --- 1. IMAGE ---
 @app.route("/analyze", methods=["POST"])
@@ -48,14 +53,16 @@ def process_media():
         if not file_url: return jsonify({"result": "No URL provided"}), 400
 
         # A. DOCUMENTS (Text/PDF)
-        if media_type == 'pdf' or media_type == 'document':
+        if media_type == 'document' or media_type == 'pdf':
             try:
-                response = requests.get(file_url)
+                # 👇 MASK LAGA KE DOWNLOAD KARO
+                response = requests.get(file_url, headers=HEADERS)
                 response.raise_for_status()
                 
-                # 1. Try as Text first
+                # 1. Try as Text (Code/Txt files)
                 try:
                     text_content = response.content.decode('utf-8')
+                    # Agar PDF signature nahi hai, toh text hai
                     if not text_content.startswith('%PDF'):
                         return jsonify({"result": f"File Content:\n{text_content[:4000]}..."})
                 except: pass
@@ -64,20 +71,25 @@ def process_media():
                 f = io.BytesIO(response.content)
                 reader = PyPDF2.PdfReader(f)
                 text = ""
-                for page in reader.pages:
+                
+                # Page by page text nikalo
+                for i, page in enumerate(reader.pages):
                     extracted = page.extract_text()
-                    if extracted: text += extracted + "\n"
+                    if extracted:
+                        text += f"\n--- Page {i+1} ---\n{extracted}"
                 
                 if not text.strip():
-                    return jsonify({"result": "⚠️ PDF Khali laga. Sayad ye Scanned Image hai."})
+                    return jsonify({"result": "⚠️ PDF khul gaya par text nahi mila. Sayad ye Scanned Image hai."})
                 
-                return jsonify({"result": f"Document Content:\n{text[:4000]}..."})
+                return jsonify({"result": f"Document Content:\n{text[:4500]}..."})
+                
             except Exception as e:
-                return jsonify({"result": f"Doc Read Error: {str(e)}"})
+                return jsonify({"result": f"PDF Error: {str(e)}"})
 
         # B. AUDIO/VIDEO
         elif media_type in ['audio', 'video']:
-            response = requests.get(file_url)
+            # Mask yahan bhi zaroori hai
+            response = requests.get(file_url, headers=HEADERS)
             filename = "temp_media.mp3"
             with open(filename, "wb") as f: f.write(response.content)
             
