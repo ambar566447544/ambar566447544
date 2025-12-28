@@ -8,7 +8,7 @@ from threading import Thread
 import PyPDF2
 import io
 import yt_dlp
-import re # 👈 NEW: Title churane ke liye
+import re 
 
 app = Flask(__name__)
 CORS(app)
@@ -16,17 +16,16 @@ CORS(app)
 GROQ_API_KEY = "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"
 client = Groq(api_key=GROQ_API_KEY)
 
-# 👇 ULTIMATE MASK (Headers)
+# HEADERS (Browser Mask)
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'Referer': 'https://www.google.com/',
-    'Accept-Language': 'en-US,en;q=0.9'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Referer': 'https://www.google.com/'
 }
 
 @app.route("/")
-def home(): return "<h1>Alya Extension Hub v4.0 (YouTube Jugaad Added) 🛠️</h1>"
+def home(): return "<h1>Alya Extension Hub v5.0 (Bypass Mode) 🛡️</h1>"
 
-# --- 1. IMAGE ---
+# --- IMAGE ---
 @app.route("/analyze", methods=["POST"])
 def analyze():
     try:
@@ -45,7 +44,7 @@ def analyze():
         return jsonify({"description": completion.choices[0].message.content})
     except Exception as e: return jsonify({"description": f"Vision Error: {str(e)}"}), 200
 
-# --- 2. DOCS & MEDIA ---
+# --- MEDIA & DOCS ---
 @app.route("/process_media", methods=["POST"])
 def process_media():
     try:
@@ -55,7 +54,7 @@ def process_media():
 
         if not file_url: return jsonify({"result": "No URL provided"}), 400
 
-        # A. DOCUMENTS (Text/PDF)
+        # A. DOCUMENTS
         if media_type == 'document' or media_type == 'pdf':
             try:
                 response = requests.get(file_url, headers=HEADERS)
@@ -73,15 +72,11 @@ def process_media():
                 reader = PyPDF2.PdfReader(f)
                 text = ""
                 for page in reader.pages:
-                    extracted = page.extract_text()
-                    if extracted: text += extracted + "\n"
+                    text += page.extract_text() + "\n"
                 
-                if not text.strip():
-                    return jsonify({"result": "⚠️ PDF Text Empty. Scanned Document ho sakta hai."})
-                
+                if not text.strip(): return jsonify({"result": "⚠️ PDF Text Empty (Scanned Doc)."})
                 return jsonify({"result": f"Document Content:\n{text[:4500]}..."})
-            except Exception as e:
-                return jsonify({"result": f"PDF Error: {str(e)}"})
+            except Exception as e: return jsonify({"result": f"PDF Error: {str(e)}"})
 
         # B. AUDIO/VIDEO
         elif media_type in ['audio', 'video']:
@@ -92,39 +87,48 @@ def process_media():
             with open(filename, "rb") as file_obj:
                 transcription = client.audio.transcriptions.create(
                     file=(filename, file_obj.read()),
-                    model="whisper-large-v3",
-                    language="en"
+                    model="whisper-large-v3", language="en"
                 )
             return jsonify({"result": f"Audio Transcript: {transcription.text}"})
 
-        # C. LINKS (THE JUGAAD FIX) 🚨
+        # C. LINKS (BYPASS MODE) 🚨
         elif media_type == 'link':
-            # PLAN A: Try yt-dlp (Best Quality)
+            # Extract Video ID
+            video_id = None
+            if "youtu.be" in file_url: video_id = file_url.split("/")[-1].split("?")[0]
+            elif "v=" in file_url: video_id = file_url.split("v=")[1].split("&")[0]
+
+            # PLAN A: Invidious API (No Block)
+            if video_id:
+                try:
+                    # Using a public instance API
+                    api_url = f"https://invidious.jing.rocks/api/v1/videos/{video_id}"
+                    resp = requests.get(api_url, timeout=10)
+                    if resp.status_code == 200:
+                        meta = resp.json()
+                        return jsonify({"result": f"Video Info (via API):\nTitle: {meta['title']}\nDescription: {meta['description'][:500]}"})
+                except Exception as e: print(f"API Failed: {e}")
+
+            # PLAN B: yt-dlp
             try:
-                ydl_opts = {'quiet': True, 'skip_download': True, 'no_warnings': True}
+                ydl_opts = {'quiet': True, 'skip_download': True}
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(file_url, download=False)
                     return jsonify({"result": f"Link Info:\nTitle: {info.get('title')}\nDesc: {info.get('description')[:500]}"})
-            except Exception as e:
-                # PLAN B: Agar yt-dlp fail ho (403 Forbidden), toh HTML Scraping karo
-                print(f"yt-dlp failed, trying Jugaad: {e}")
-                try:
-                    response = requests.get(file_url, headers=HEADERS)
-                    if response.status_code == 200:
-                        # Regex se <title> tag nikalo
-                        match = re.search(r'<title>(.*?)</title>', response.text)
-                        if match:
-                            title = match.group(1).replace("- YouTube", "").strip()
-                            return jsonify({"result": f"Link Analysis (Fallback): Yeh YouTube video hai. Title: '{title}'."})
-                except:
-                    pass
-                
-                return jsonify({"result": "Link detect hua par content read nahi ho paya (Security Block)."})
+            except: pass
+            
+            # PLAN C: Basic Request
+            try:
+                r = requests.get(file_url, headers=HEADERS)
+                match = re.search(r'<title>(.*?)</title>', r.text)
+                if match: return jsonify({"result": f"Web Page Title: {match.group(1)}"})
+            except: pass
+
+            return jsonify({"result": "Link detected but content is strictly protected."})
 
         return jsonify({"result": "Unknown Media Type"})
 
-    except Exception as e:
-        return jsonify({"result": f"Processing Error: {str(e)}"}), 200
+    except Exception as e: return jsonify({"result": f"Processing Error: {str(e)}"}), 200
 
 def keep_alive():
     while True:
@@ -134,4 +138,3 @@ def keep_alive():
 if __name__ == "__main__":
     Thread(target=keep_alive).start()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
-    
