@@ -8,6 +8,7 @@ from threading import Thread
 import PyPDF2
 import io
 import yt_dlp
+import re # 👈 NEW: Title churane ke liye
 
 app = Flask(__name__)
 CORS(app)
@@ -15,14 +16,15 @@ CORS(app)
 GROQ_API_KEY = "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"
 client = Groq(api_key=GROQ_API_KEY)
 
-# 👇 ULTIMATE MASK (Referer + User Agent)
+# 👇 ULTIMATE MASK (Headers)
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'Referer': 'https://www.google.com/'
+    'Referer': 'https://www.google.com/',
+    'Accept-Language': 'en-US,en;q=0.9'
 }
 
 @app.route("/")
-def home(): return "<h1>Alya Extension Hub v3.1 (Access Fixed) 🛡️</h1>"
+def home(): return "<h1>Alya Extension Hub v4.0 (YouTube Jugaad Added) 🛠️</h1>"
 
 # --- 1. IMAGE ---
 @app.route("/analyze", methods=["POST"])
@@ -56,9 +58,8 @@ def process_media():
         # A. DOCUMENTS (Text/PDF)
         if media_type == 'document' or media_type == 'pdf':
             try:
-                # Mask laga ke download karo
                 response = requests.get(file_url, headers=HEADERS)
-                response.raise_for_status() # Agar 403 aaya toh yahan error pakda jayega
+                response.raise_for_status()
                 
                 # Try Text
                 try:
@@ -80,7 +81,7 @@ def process_media():
                 
                 return jsonify({"result": f"Document Content:\n{text[:4500]}..."})
             except Exception as e:
-                return jsonify({"result": f"PDF Access Error: {str(e)}"})
+                return jsonify({"result": f"PDF Error: {str(e)}"})
 
         # B. AUDIO/VIDEO
         elif media_type in ['audio', 'video']:
@@ -96,12 +97,29 @@ def process_media():
                 )
             return jsonify({"result": f"Audio Transcript: {transcription.text}"})
 
-        # C. LINKS
+        # C. LINKS (THE JUGAAD FIX) 🚨
         elif media_type == 'link':
-            ydl_opts = {'quiet': True, 'skip_download': True}
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(file_url, download=False)
-                return jsonify({"result": f"Link Info:\nTitle: {info.get('title')}\nDesc: {info.get('description')[:500]}"})
+            # PLAN A: Try yt-dlp (Best Quality)
+            try:
+                ydl_opts = {'quiet': True, 'skip_download': True, 'no_warnings': True}
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(file_url, download=False)
+                    return jsonify({"result": f"Link Info:\nTitle: {info.get('title')}\nDesc: {info.get('description')[:500]}"})
+            except Exception as e:
+                # PLAN B: Agar yt-dlp fail ho (403 Forbidden), toh HTML Scraping karo
+                print(f"yt-dlp failed, trying Jugaad: {e}")
+                try:
+                    response = requests.get(file_url, headers=HEADERS)
+                    if response.status_code == 200:
+                        # Regex se <title> tag nikalo
+                        match = re.search(r'<title>(.*?)</title>', response.text)
+                        if match:
+                            title = match.group(1).replace("- YouTube", "").strip()
+                            return jsonify({"result": f"Link Analysis (Fallback): Yeh YouTube video hai. Title: '{title}'."})
+                except:
+                    pass
+                
+                return jsonify({"result": "Link detect hua par content read nahi ho paya (Security Block)."})
 
         return jsonify({"result": "Unknown Media Type"})
 
@@ -116,3 +134,4 @@ def keep_alive():
 if __name__ == "__main__":
     Thread(target=keep_alive).start()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    
