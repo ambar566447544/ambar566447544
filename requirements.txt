@@ -1,9 +1,1 @@
-pyTelegramBotAPI
-groq
-flask
-gunicorn
-requests
-flask-cors
-yt-dlp 
-PyPDF2 
-moviepy
+
