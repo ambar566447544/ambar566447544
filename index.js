@@ -5,7 +5,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 /* ========= ESP32 DETAILS ========= */
-const ESP32_IP = "192.168.1.50";      // 🔴 ESP32 ka local IP
+const ESP32_IP = "4c4d3686d1ac.ngrok-free.app";      // 🔴 ESP32 ka local IP
 const SECRET_KEY = "SECRET123";       // 🔴 Same as ESP32
 
 /* ========= FUNCTION ========= */
